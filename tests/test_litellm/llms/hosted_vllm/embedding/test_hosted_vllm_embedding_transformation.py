@@ -238,11 +238,9 @@ class TestHostedVLLMEmbeddingTransformation:
         
         This test mocks the HTTP client to verify the actual request payload.
         """
+        # Patch the HTTPHandler class's post method directly
         from litellm.llms.custom_httpx.http_handler import HTTPHandler
-
-        client = HTTPHandler()
-        
-        with patch.object(client, "post") as mock_post:
+        with patch.object(HTTPHandler, "post") as mock_http_handler_post:
             # Mock response
             mock_response = Mock()
             mock_response.status_code = 200
@@ -256,38 +254,37 @@ class TestHostedVLLMEmbeddingTransformation:
                         "embedding": [0.1, 0.2, 0.3, 0.4, 0.5],
                     }
                 ],
-                "model": "BAAI/bge-small-en-v1.5",
+                "model": self.model.replace("hosted_vllm/", "", 1), # Corrected model name
                 "usage": {
                     "prompt_tokens": 5,
                     "total_tokens": 5,
                 },
             }
             mock_response.text = json.dumps(mock_response.json.return_value)
-            mock_post.return_value = mock_response
+            mock_http_handler_post.return_value = mock_response
 
             try:
                 litellm.embedding(
                     model=self.model,
                     input=["Hello world"],
                     api_base="https://test-vllm.example.com/v1",
-                    client=client,
+                    # Pass client=None to force litellm to create its own HTTPHandler
+                    # and ensure our patch on HTTPHandler.post is effective.
+                    client=None,
                 )
             except Exception:
                 pass
 
             # Verify the request was made
-            mock_post.assert_called_once()
+            mock_http_handler_post.assert_called_once()
 
             # Get the data that was sent
-            call_kwargs = mock_post.call_args[1]
+            call_kwargs = mock_http_handler_post.call_args[1]
             sent_data = json.loads(call_kwargs["data"])
 
             # Assert that encoding_format is NOT in the sent data
             assert "encoding_format" not in sent_data, (
                 "encoding_format should not be in request when not provided"
             )
-            assert sent_data["model"] == "BAAI/bge-small-en-v1.5"
+            assert sent_data["model"] == self.model.replace("hosted_vllm/", "", 1) # Corrected model name
             assert sent_data["input"] == ["Hello world"]
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "-s"])
