@@ -887,12 +887,17 @@ class BaseLLMHTTPHandler:
                 litellm_params=litellm_params,
             )
 
-        if client is None or not isinstance(client, HTTPHandler):
+        if client is None:
             sync_httpx_client = _get_httpx_client(
                 params={"ssl_verify": litellm_params.get("ssl_verify", None)}
             )
+        elif hasattr(client, "post") and callable(getattr(client, "post", None)):
+            sync_httpx_client = client  # type: ignore[assignment]
         else:
-            sync_httpx_client = client
+            raise TypeError(
+                f"Unsupported client type provided to embedding handler: {type(client).__name__}. "
+                "Client must be None or an object with a callable 'post' method."
+            )
 
         try:
             response = sync_httpx_client.post(
@@ -934,13 +939,18 @@ class BaseLLMHTTPHandler:
         timeout: Optional[Union[float, httpx.Timeout]] = None,
         client: Optional[Union[HTTPHandler, AsyncHTTPHandler]] = None,
     ) -> EmbeddingResponse:
-        if client is None or not isinstance(client, AsyncHTTPHandler):
+        if client is None:
             async_httpx_client = get_async_httpx_client(
                 llm_provider=litellm.LlmProviders(custom_llm_provider),
                 params={"ssl_verify": litellm_params.get("ssl_verify", None)},
             )
+        elif hasattr(client, "post") and callable(getattr(client, "post", None)) and hasattr(client, "aclose") and callable(getattr(client, "aclose", None)):
+            async_httpx_client = client  # type: ignore[assignment]
         else:
-            async_httpx_client = client
+            raise TypeError(
+                f"Unsupported client type provided to async embedding handler: {type(client).__name__}. "
+                "Client must be None or an object with callable 'post' and 'aclose' methods."
+            )
 
         try:
             response = await async_httpx_client.post(
